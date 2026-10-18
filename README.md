@@ -46,9 +46,9 @@ analyze_group(meeting_id) → 统一 JSON 结果 → Agent 组 / 课堂系统
 | `gca_engine/preprocessing/` | 岳柔 | 中文文本处理（分词、口语词、ASR 重复） |
 | `gca_engine/engine.py` | 雷梦琪 | 把各模块接起来的总流程 |
 | `gca_engine/aggregation.py` | 雷梦琪 | 学生结果 → 小组结果 |
-| `gca_engine/windows.py` | 雷梦琪 | 固定 5 分钟 / 滑动 5 分钟窗口（开发中） |
+| `gca_engine/windows.py` | 雷梦琪 | 固定 5 分钟 / 滑动 5 分钟窗口 |
 | `gca_engine/config.py` | 雷梦琪 | 引擎级配置 |
-| `gca_engine/schemas.py` | 葛艾蓝 | 统一输入输出格式（全员必须遵守） |
+| `gca_engine/schemas.py` | 葛艾蓝 | 统一输入输出格式 |
 | `gca_engine/service.py` | 葛艾蓝 | `analyze_group(meeting_id)` 对外入口 |
 | `tests/` | 公共 | 按文件名前缀分工，见下 |
 | `examples/`、`README.md` | 公共 | 改动前在群里说一声 |
@@ -60,7 +60,7 @@ analyze_group(meeting_id) → 统一 JSON 结果 → Agent 组 / 课堂系统
 - `test_engine_*.py`、`test_aggregation_*.py`、`test_windows_*.py` → 雷梦琪
 - `test_schemas_*.py`、`test_service_*.py`、`test_conversation_json.py` → 葛艾蓝
 
-**规则：只改自己负责的文件。** 别人的文件需要改时，在群里说，不要直接动手。
+**规则：**改了 schemas.py、了公共配置、依赖文件、统一输入输出格式、别人也正在修改的文件，准备合并时发现和别人改了同一文件，需要在群里说。
 
 ## 4. 怎么安装依赖
 
@@ -222,12 +222,3 @@ result = analyze_group("meeting-001")   # meeting_id 是字符串
 `invalid_input`、`not_found`、`internal_error`
 
 不要自己发明 `no_data`、`empty`、`error`、`failed` 之类的重复状态。
-
-## 已知问题（重要，别静默改动）
-
-1. **Newness 边界问题待复核（陈虹宇）**：当前数学与旧实验基线完全一致
-   （legacy 行为已用 `tests/test_newness_edge_cases.py` 锁死）。复核后如果
-   确认有 bug：先在群里说明 → 更新测试 → 再改代码，并在提交信息里写清影响。
-2. **timeline 未实现（雷梦琪）**：见 `gca_engine/windows.py`。
-3. **中文分词未接入（岳柔）**：目前按空白切分，中文效果差；
-   接入 `preprocessing/chinese.py` 并验证后再切换引擎。
