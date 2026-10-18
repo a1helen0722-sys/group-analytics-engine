@@ -95,12 +95,10 @@ python examples/gca_worked_example.py
 ## 7. 四个人如何下载项目
 
 ```bash
-git clone https://github.com/<仓库地址>/group-analytics-engine.git
+git clone https://github.com/a1helen0722-sys/group-analytics-engine.git
 cd group-analytics-engine
 pip install -r requirements.txt
 ```
-
-> `<仓库地址>` 由组长在群里发，clone 之后替换。
 
 ## 8. 四个人每天开发前怎么同步
 
