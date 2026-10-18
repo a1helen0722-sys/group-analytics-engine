@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "group-analytics-engine"
+version = "0.1.0"
+description = "课堂小组讨论 GCA 六指标分析引擎（后端算法组共同仓库）"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["gca_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

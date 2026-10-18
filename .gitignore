@@ -1,0 +1,64 @@
+# --- Python 运行时 ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- 虚拟环境 ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- 敏感信息：任何情况都不要提交 ---
+.env
+.env.*
+*.pem
+*.key
+*.p12
+credentials*.*
+secrets*.*
+token*.*
+
+# --- 数据库 ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- 大数据 / 模型 / 结果 ---
+data/
+results/
+output/
+*.joblib
+*.npy
+*.npz
+*.pkl
+*.pt
+*.onnx
+*.bin
+
+# --- 音视频 / 图像 ---
+*.wav
+*.mp3
+*.mp4
+*.avi
+*.mov
+*.png
+*.jpg
+*.jpeg
+
+# --- 日志 / 临时文件 ---
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+
+# --- IDE / 工具个人配置 ---
+.idea/
+.vscode/
+.claude/
