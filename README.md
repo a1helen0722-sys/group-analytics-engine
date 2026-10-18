@@ -60,7 +60,7 @@ analyze_group(meeting_id) → 统一 JSON 结果 → Agent 组 / 课堂系统
 - `test_engine_*.py`、`test_aggregation_*.py`、`test_windows_*.py` → 雷梦琪
 - `test_schemas_*.py`、`test_service_*.py`、`test_conversation_json.py` → 葛艾蓝
 
-**规则：只改自己负责的文件。** 别人的文件需要改时，在群里说，不要直接动手。
+**规则：平时只改自己负责的文件。** 确实需要改到其他模块的文件时，可以在自己的分支里直接修改；涉及 `schemas.py`、公共配置、依赖文件、统一输入输出格式，或合并时发现和别人改了同一个文件，先在群里同步一下。
 
 ## 4. 怎么安装依赖
 
@@ -214,7 +214,7 @@ result = analyze_group("meeting-001")   # meeting_id 是字符串
   `overall_responsivity`、`social_impact`、`newness`、`communication_density`
 - `group_metrics` 只有 `mean / min / max / std / count`，**没有**"团队综合分"
 - `timeline` 第一版为 `null`（未实现，warnings 里已标明；由雷梦琪在
-  `windows.py` 实现固定 5 分钟窗口和 60 秒一个更新点的滑动 5 分钟窗口）
+  `windows.py` 实现固定 5 分钟窗口和滑动 5 分钟窗口，滑动窗口首版按 30 秒一个更新点）
 
 ## 状态只有这 7 种
 

@@ -86,9 +86,9 @@ class GroupAnalysisResult:
             "fixed_5min": [    # 固定 5 分钟窗口：0-300, 300-600, ...
                 {"start_second": 0, "end_second": 300, "group_metrics": {...}},
             ],
-            "sliding_5min": [  # 最近 5 分钟滑动窗口，每 60 秒一个更新点
-                {"center_second": 60,  "group_metrics": {...}},
-                {"center_second": 120, "group_metrics": {...}},
+            "sliding_5min": [  # 最近 5 分钟滑动窗口，每 30 秒一个更新点（首版）
+                {"center_second": 30,  "group_metrics": {...}},
+                {"center_second": 60, "group_metrics": {...}},
             ],
         }
     第一版尚未实现，timeline 为 None，并在 warnings 里明确标记。

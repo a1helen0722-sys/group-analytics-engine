@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass
 # 时间窗口默认值（第一版约定）
 FIXED_WINDOW_SECONDS = 300    # 固定 5 分钟窗口
 SLIDING_WINDOW_SECONDS = 300  # 滑动 5 分钟窗口
-SLIDING_STEP_SECONDS = 60     # 滑动窗口每 60 秒一个更新点
+SLIDING_STEP_SECONDS = 30     # 滑动窗口每 30 秒一个更新点（首版，后续按性能调整）
 
 
 @dataclass
