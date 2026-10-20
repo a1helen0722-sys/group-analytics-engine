@@ -6,6 +6,7 @@ service 层端到端测试（负责人：葛艾蓝）。
 """
 
 import unittest
+from unittest.mock import patch
 
 from gca_engine.schemas import AnalysisStatus, Utterance
 from gca_engine.service import (
@@ -37,6 +38,24 @@ class TestAnalyzeGroup(unittest.TestCase):
     def tearDown(self):
         for mid in list_meetings():
             clear_meeting(mid)
+
+    def test_engine_exception_returns_internal_error(self):
+        meeting_id = "engine-error"
+        register_meeting(meeting_id, _make_utterances(meeting_id))
+
+        with patch(
+            "gca_engine.service.analyze_utterances",
+            side_effect=RuntimeError("simulated engine failure"),
+        ):
+            result = analyze_group(meeting_id)
+
+        self.assertEqual(result.status, AnalysisStatus.INTERNAL_ERROR)
+        self.assertEqual(result.meeting_id, meeting_id)
+        self.assertEqual(result.student_metrics, {})
+        self.assertEqual(result.group_metrics, {})
+        self.assertIsNotNone(result.error)
+        self.assertIn("RuntimeError", result.error)
+        self.assertIn("simulated engine failure", result.error)
 
     def test_success_full_flow(self):
         utterances = _make_utterances()
