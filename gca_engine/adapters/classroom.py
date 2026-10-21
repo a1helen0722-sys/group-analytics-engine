@@ -20,10 +20,13 @@ timestamp 可以是 datetime 或数字：
     - 补测试样例（tests/test_classroom_*.py）
 """
 
+"""课堂 Transcript → 统一 Utterance（负责人：岳柔）。"""
+
 from datetime import datetime
 from typing import Any
 
 from gca_engine.schemas import Utterance
+from gca_engine.preprocessing.chinese import normalize_text
 
 _TRANSCRIPT_FIELDS = ("id", "user_id", "content", "timestamp")
 
@@ -44,17 +47,15 @@ def transcripts_to_utterances(
 ) -> list[Utterance]:
     """把课堂 transcripts 记录列表转成统一 Utterance 列表。
 
-    Args:
-        transcripts: Transcript 记录列表（dict）。
-        meeting_id:  讨论小组 ID（int 也可以，内部会转成字符串）。
-
-    Returns:
-        Utterance 列表，按时间升序排列。
+    - 空文本自动跳过
+    - 按时间升序排列
+    - user_id 统一转字符串
     """
     if not isinstance(transcripts, list):
         raise ValueError("transcripts 必须是列表")
     meeting_id = str(meeting_id)
 
+    # 1. 找最早时间作为 origin
     origin: float | None = None
     for r in transcripts:
         if not isinstance(r, dict):
@@ -70,16 +71,27 @@ def transcripts_to_utterances(
         else:
             raise ValueError(f"timestamp 必须是 datetime 或数字，got {type(ts).__name__}")
 
-    utterances = [
-        Utterance(
-            meeting_id=meeting_id,
-            speaker_id=str(r["user_id"]),
-            text=str(r["content"]),
-            timestamp=_to_seconds(r["timestamp"], float(origin)),
-            utterance_id=str(r["id"]),
-            end_time=None,
+    if origin is None:
+        return []
+
+    # 2. 逐条转换，跳过空文本
+    utterances: list[Utterance] = []
+    for r in transcripts:
+        text = normalize_text(r.get("content"))
+        if text == "":
+            continue
+
+        utterances.append(
+            Utterance(
+                meeting_id=meeting_id,
+                speaker_id=str(r["user_id"]),
+                text=text,
+                timestamp=_to_seconds(r["timestamp"], origin),
+                utterance_id=str(r["id"]),
+                end_time=None,
+            )
         )
-        for r in transcripts
-    ]
+
+    # 3. 排序
     utterances.sort(key=lambda u: (u.timestamp, u.utterance_id))
     return utterances
