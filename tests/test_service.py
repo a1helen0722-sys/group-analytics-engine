@@ -149,6 +149,39 @@ class TestAnalyzeGroup(unittest.TestCase):
         self.assertNotIn("demo-1", list_meetings())
         clear_meeting("never-existed")  # 不存在也不报错
 
+    def test_register_rejects_mismatched_meeting_id(self):
+        with self.assertRaisesRegex(ValueError, "meeting_id"):
+            register_meeting(
+                "target-group",
+                _make_utterances("other-group"),
+            )
+
+        self.assertNotIn("target-group", list_meetings())
+
+    def test_register_rejects_mixed_meetings_without_overwrite(self):
+        meeting_id = "target-group"
+        original = _make_utterances(meeting_id)
+        register_meeting(meeting_id, original)
+
+        mixed = _make_utterances(meeting_id)
+        mixed[0] = Utterance(
+            meeting_id="other-group",
+            speaker_id="other-student",
+            text="This is another group discussion",
+            timestamp=5.0,
+            utterance_id="foreign-1",
+        )
+
+        with self.assertRaisesRegex(ValueError, "meeting_id"):
+            register_meeting(meeting_id, mixed)
+
+        result = analyze_group(meeting_id)
+        self.assertEqual(result.status, AnalysisStatus.SUCCESS)
+        self.assertEqual(
+            set(result.student_metrics),
+            {u.speaker_id for u in original},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

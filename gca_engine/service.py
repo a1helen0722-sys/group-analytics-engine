@@ -26,7 +26,7 @@ def register_meeting(meeting_id: str, utterances: list[Utterance]) -> None:
     """注册一次课堂讨论的发言列表（v0.1 临时存储，之后换成正式数据源）。
 
     Raises:
-        ValueError: 参数类型不对。
+        ValueError: 参数不合法，或发言的 meeting_id 与注册 ID 不一致。
     """
     if not isinstance(meeting_id, str) or not meeting_id.strip():
         raise ValueError("meeting_id 必须是非空字符串")
@@ -34,6 +34,9 @@ def register_meeting(meeting_id: str, utterances: list[Utterance]) -> None:
         isinstance(u, Utterance) for u in utterances
     ):
         raise ValueError("utterances 必须是 Utterance 列表")
+    if any(u.meeting_id != meeting_id for u in utterances):
+        raise ValueError("每条发言的 meeting_id 必须与注册的 meeting_id 一致")
+
     _MEETING_STORE[meeting_id] = list(utterances)
 
 

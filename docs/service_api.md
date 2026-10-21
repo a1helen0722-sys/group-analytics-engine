@@ -20,6 +20,15 @@ result = analyze_group(meeting_id)
 当前基础版从内存登记表读取发言数据。
 开发演示时，需要先在同一 Python 进程中调用
 `register_meeting(meeting_id, utterances)` 准备数据。
+登记时的校验规则：
+
+- meeting_id 必须是非空字符串，utterances 必须是 Utterance 列表。
+- 每条发言的 meeting_id 必须与登记时传入的 meeting_id 完全一致。
+- 参数不合法时，register_meeting 抛出 ValueError，不新增或覆盖登记数据。
+- 允许登记空列表；随后调用 analyze_group 会返回 empty_transcript。
+
+上述 ValueError 是数据登记阶段的异常，不是新增的分析状态。
+analyze_group 的返回状态仍限定为约定的 7 种。
 
 发言统一使用 `Utterance`：
 - 学生身份使用 user_id 转成的字符串。
