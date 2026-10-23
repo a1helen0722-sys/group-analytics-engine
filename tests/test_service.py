@@ -6,6 +6,7 @@ service 层端到端测试（负责人：葛艾蓝）。
 """
 
 import unittest
+from unittest.mock import patch
 
 from gca_engine.schemas import AnalysisStatus, Utterance
 from gca_engine.service import (
@@ -37,6 +38,24 @@ class TestAnalyzeGroup(unittest.TestCase):
     def tearDown(self):
         for mid in list_meetings():
             clear_meeting(mid)
+
+    def test_engine_exception_returns_internal_error(self):
+        meeting_id = "engine-error"
+        register_meeting(meeting_id, _make_utterances(meeting_id))
+
+        with patch(
+            "gca_engine.service.analyze_utterances",
+            side_effect=RuntimeError("simulated engine failure"),
+        ):
+            result = analyze_group(meeting_id)
+
+        self.assertEqual(result.status, AnalysisStatus.INTERNAL_ERROR)
+        self.assertEqual(result.meeting_id, meeting_id)
+        self.assertEqual(result.student_metrics, {})
+        self.assertEqual(result.group_metrics, {})
+        self.assertIsNotNone(result.error)
+        self.assertIn("RuntimeError", result.error)
+        self.assertIn("simulated engine failure", result.error)
 
     def test_success_full_flow(self):
         utterances = _make_utterances()
@@ -129,6 +148,39 @@ class TestAnalyzeGroup(unittest.TestCase):
         clear_meeting("demo-1")
         self.assertNotIn("demo-1", list_meetings())
         clear_meeting("never-existed")  # 不存在也不报错
+
+    def test_register_rejects_mismatched_meeting_id(self):
+        with self.assertRaisesRegex(ValueError, "meeting_id"):
+            register_meeting(
+                "target-group",
+                _make_utterances("other-group"),
+            )
+
+        self.assertNotIn("target-group", list_meetings())
+
+    def test_register_rejects_mixed_meetings_without_overwrite(self):
+        meeting_id = "target-group"
+        original = _make_utterances(meeting_id)
+        register_meeting(meeting_id, original)
+
+        mixed = _make_utterances(meeting_id)
+        mixed[0] = Utterance(
+            meeting_id="other-group",
+            speaker_id="other-student",
+            text="This is another group discussion",
+            timestamp=5.0,
+            utterance_id="foreign-1",
+        )
+
+        with self.assertRaisesRegex(ValueError, "meeting_id"):
+            register_meeting(meeting_id, mixed)
+
+        result = analyze_group(meeting_id)
+        self.assertEqual(result.status, AnalysisStatus.SUCCESS)
+        self.assertEqual(
+            set(result.student_metrics),
+            {u.speaker_id for u in original},
+        )
 
 
 if __name__ == "__main__":
