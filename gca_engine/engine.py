@@ -25,6 +25,7 @@ from gca_engine.aggregation import group_metric_stats
 from gca_engine.config import EngineConfig
 from gca_engine.core.config import GCAConfig
 from gca_engine.core.lsa import clean_text, tokenize
+from gca_engine.core.lsa.config import LSAConfig
 from gca_engine.core.metrics import compute_gca_metrics
 from gca_engine.schemas import (
     SIX_METRICS,
@@ -123,7 +124,9 @@ def analyze_utterances(
 
     # --- LSA 语义空间 ----------------------------------------------------
     try:
-        model = fit_lsa_space(texts)
+        model = fit_lsa_space(
+            texts, config=LSAConfig(n_components=config.lsa_components)
+        )
         vectors = project_texts(model, texts)
     except ValueError as e:
         return _error_result(

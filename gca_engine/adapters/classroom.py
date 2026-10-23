@@ -57,6 +57,8 @@ def transcripts_to_utterances(
 
     # 1. 找最早时间作为 origin
     origin: float | None = None
+    has_datetime = False
+    has_numeric = False
     for r in transcripts:
         if not isinstance(r, dict):
             raise ValueError("每条记录必须是 dict")
@@ -65,11 +67,17 @@ def transcripts_to_utterances(
             raise ValueError(f"记录缺少字段: {missing}")
         ts = r["timestamp"]
         if isinstance(ts, datetime):
+            has_datetime = True
             origin = min(ts.timestamp(), origin) if origin is not None else ts.timestamp()
-        elif isinstance(ts, (int, float)):
+        elif isinstance(ts, (int, float)) and not isinstance(ts, bool):
+            has_numeric = True
             origin = min(float(ts), origin) if origin is not None else float(ts)
         else:
             raise ValueError(f"timestamp 必须是 datetime 或数字，got {type(ts).__name__}")
+        if has_datetime and has_numeric:
+            raise ValueError(
+                "同一批 transcript 的 timestamp 不能混用 datetime 和数字（相对秒数）"
+            )
 
     if origin is None:
         return []
