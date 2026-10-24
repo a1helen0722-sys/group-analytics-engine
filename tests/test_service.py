@@ -85,11 +85,14 @@ class TestAnalyzeGroup(unittest.TestCase):
             )
             self.assertEqual(stats["count"], 3)
 
-        # timeline 第一版未实现：None + 明确标记
-        self.assertIsNone(result.timeline)
-        self.assertTrue(
-            any("timeline 尚未实现" in w for w in result.warnings)
-        )
+        # timeline（v0.2 已实现）：固定 5 分钟窗口 + 滑动 5 分钟窗口
+        self.assertIsNotNone(result.timeline)
+        self.assertIn("fixed_5min", result.timeline)
+        self.assertIn("sliding_5min", result.timeline)
+        # 这节假课堂只有 280 秒，固定窗口只有 1 个
+        self.assertEqual(len(result.timeline["fixed_5min"]), 1)
+        self.assertTrue(result.timeline["sliding_5min"])
+        self.assertEqual(result.metadata["timeline"]["sliding_step_seconds"], 30)
 
         # 结果可以序列化成 dict
         d = result.to_dict()

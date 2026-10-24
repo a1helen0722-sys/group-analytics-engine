@@ -1,7 +1,7 @@
 """
 gca_engine.engine —— 把各模块接起来的总流程（负责人：雷梦琪）。
 
-v0.1 流程：
+v0.2 流程：
 
     统一 Utterance 列表
       → 输入检查（invalid_input / empty_transcript / insufficient_data）
@@ -10,16 +10,15 @@ v0.1 流程：
       → 词数统计（与 LSA 同一种分词，保持旧基线一致）
       → GCA 六指标（core.metrics，数学与旧基线一致）
       → 学生指标 → 小组汇总（aggregation）
+      → 时间窗口（windows：固定 5 分钟 + 滑动 5 分钟）
       → GroupAnalysisResult
 
-时间窗口（固定 5 分钟 / 滑动 5 分钟）由 windows.py 实现，
-v0.1 尚未接入，结果中 timeline=None 并在 warnings 里标记。
+窗口与整体共用同一个 LSA 语义空间：窗口只切向量子集重算 GCA，
+不重新拟合，否则各窗口的语义坐标不一致，时间趋势不可比。
 """
 
 import logging
 from datetime import datetime, timezone
-
-import numpy as np
 
 from gca_engine.aggregation import group_metric_stats
 from gca_engine.config import EngineConfig
@@ -28,14 +27,14 @@ from gca_engine.core.lsa import clean_text, tokenize
 from gca_engine.core.lsa.config import LSAConfig
 from gca_engine.core.metrics import compute_gca_metrics
 from gca_engine.schemas import (
-    SIX_METRICS,
     AnalysisStatus,
     GroupAnalysisResult,
     Utterance,
 )
 from gca_engine.semantic import fit_lsa_space, project_texts
+from gca_engine.windows import build_timeline, duration_seconds
 
-ENGINE_VERSION = "0.1.0"
+ENGINE_VERSION = "0.2.0"
 logger = logging.getLogger(__name__)
 
 
@@ -67,6 +66,21 @@ def _validate(meeting_id: str, utterances: list[Utterance]) -> str | None:
     if bad:
         return f"第 {bad[0]} 条发言不是 Utterance 对象"
     return None
+
+
+def _student_metrics_from(gca) -> dict[str, dict[str, float]]:
+    """GCAResult → {speaker_id: 六指标}。整节课和每个窗口共用。"""
+    return {
+        s: {
+            "participation": gca.participation[s],
+            "internal_cohesion": gca.internal_cohesion[s],
+            "overall_responsivity": gca.overall_responsivity[s],
+            "social_impact": gca.social_impact[s],
+            "newness": gca.newness_by_speaker[s],
+            "communication_density": gca.density_by_speaker[s],
+        }
+        for s in gca.speakers
+    }
 
 
 def analyze_utterances(
@@ -144,17 +158,7 @@ def analyze_utterances(
     word_counts = [len(tokenize(t)) for t in texts]
     gca = compute_gca_metrics(meeting_id, speaker_ids, vectors, word_counts, gca_config)
 
-    student_metrics: dict[str, dict[str, float]] = {
-        s: {
-            "participation": gca.participation[s],
-            "internal_cohesion": gca.internal_cohesion[s],
-            "overall_responsivity": gca.overall_responsivity[s],
-            "social_impact": gca.social_impact[s],
-            "newness": gca.newness_by_speaker[s],
-            "communication_density": gca.density_by_speaker[s],
-        }
-        for s in gca.speakers
-    }
+    student_metrics = _student_metrics_from(gca)
 
     if len(gca.speakers) == 1:
         warnings.append(
@@ -164,13 +168,53 @@ def analyze_utterances(
     else:
         status = AnalysisStatus.SUCCESS
 
-    warnings.append(
-        "timeline 尚未实现（固定 5 分钟窗口 / 滑动 5 分钟窗口开发中，"
-        "见 gca_engine/windows.py）"
-    )
+    duration = duration_seconds(ordered)
 
-    end_seconds = [u.end_time for u in ordered if u.end_time is not None]
-    duration = max(end_seconds) if end_seconds else max(u.timestamp for u in ordered)
+    # --- 时间窗口 ---------------------------------------------------------
+    # 窗口内的指标必须在同一个语义空间里算，所以这里只切向量子集，
+    # 不重新 fit_lsa_space（重新拟合会让每个窗口的坐标系都不一样）。
+    timeline = None
+    window_errors: list[dict] = []
+    metadata_timeline: dict = {}
+    if config.timeline_enabled:
+        position = {id(u): i for i, u in enumerate(ordered)}
+
+        def _analyze_subset(subset: list[Utterance]) -> dict[str, dict[str, float]]:
+            """窗口子集 → 六指标。子集为空返回 {}，由 windows 记为无数据窗口。"""
+            if not subset:
+                return {}
+            idx = [position[id(u)] for u in subset]
+            sub_speakers = [speaker_ids[i] for i in idx]
+            sub_vectors = vectors[idx]
+            sub_counts = [word_counts[i] for i in idx]
+            sub_gca = compute_gca_metrics(
+                meeting_id, sub_speakers, sub_vectors, sub_counts, gca_config
+            )
+            return _student_metrics_from(sub_gca)
+
+        timeline, window_warnings, window_errors = build_timeline(
+            ordered,
+            _analyze_subset,
+            fixed_window_seconds=config.fixed_window_seconds,
+            sliding_window_seconds=config.sliding_window_seconds,
+            sliding_step_seconds=config.sliding_step_seconds,
+            duration=duration,
+        )
+        warnings.extend(window_warnings)
+        metadata_timeline = {
+            "fixed_window_seconds": config.fixed_window_seconds,
+            "sliding_window_seconds": config.sliding_window_seconds,
+            "sliding_step_seconds": config.sliding_step_seconds,
+            "n_fixed_windows": len(timeline["fixed_5min"]),
+            "n_sliding_windows": len(timeline["sliding_5min"]),
+        }
+        if duration < config.fixed_window_seconds:
+            warnings.append(
+                f"课堂时长 {duration:g} 秒不足 {config.fixed_window_seconds // 60} 分钟，"
+                "固定窗口只有一个"
+            )
+    else:
+        warnings.append("timeline 已按 EngineConfig.timeline_enabled=False 关闭")
 
     metadata = {
         "n_utterances": n,
@@ -182,16 +226,20 @@ def analyze_utterances(
             "actual_dimensions": model.actual_dimensions,
         },
         "gca_config": gca_config.to_dict(),
+        "timeline": metadata_timeline,
         "engine_version": ENGINE_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
+    if window_errors:
+        # 失败窗口的具体原因只放在 metadata，避免 warnings 里刷一长串
+        metadata["window_errors"] = window_errors
 
     return GroupAnalysisResult(
         meeting_id=meeting_id,
         status=status,
         student_metrics=student_metrics,
         group_metrics=group_metric_stats(student_metrics),
-        timeline=None,
+        timeline=timeline,
         metadata=metadata,
         warnings=warnings,
         error=None,

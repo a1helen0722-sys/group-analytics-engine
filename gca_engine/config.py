@@ -17,13 +17,20 @@ SLIDING_STEP_SECONDS = 30     # 滑动窗口每 30 秒一个更新点（首版�
 
 @dataclass
 class EngineConfig:
-    """引擎总配置（v0.1 只用到 min_utterances 和 lsa_components）。"""
+    """引擎总配置。
+
+    v0.1 用到 min_utterances / lsa_components；
+    v0.2 加上时间窗口的开关和粒度。
+    """
 
     fixed_window_seconds: int = FIXED_WINDOW_SECONDS
     sliding_window_seconds: int = SLIDING_WINDOW_SECONDS
     sliding_step_seconds: int = SLIDING_STEP_SECONDS
     min_utterances: int = 2   # 少于这个数直接 insufficient_data
     lsa_components: int = 300  # 与旧基线 LSAConfig 默认一致；小语料自动降维
+    # 是否计算 timeline。窗口计算比整节课多花 O(窗口数 × 发言数)，
+    # 只需要个人/小组指标、不要时间趋势的调用方可以关掉。
+    timeline_enabled: bool = True
 
     def to_dict(self) -> dict:
         return asdict(self)

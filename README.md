@@ -201,9 +201,18 @@ result = analyze_group("meeting-001")   # meeting_id 是字符串
   "group_metrics": {
     "participation": {"mean": 0.4, "min": 0.2, "max": 0.6, "std": 0.1, "count": 3}
   },
-  "timeline": null,
-  "metadata": {"n_utterances": 6, "n_speakers": 3, "engine_version": "0.1.0"},
-  "warnings": ["timeline 尚未实现（固定 5 分钟窗口 / 滑动 5 分钟窗口开发中，见 gca_engine/windows.py）"],
+  "timeline": {
+    "fixed_5min": [
+      {"start_second": 0, "end_second": 300, "group_metrics": {"participation": {"mean": 0.4, "min": 0.2, "max": 0.6, "std": 0.1, "count": 3}}}
+    ],
+    "sliding_5min": [
+      {"center_second": 30, "group_metrics": {}}
+    ]
+  },
+  "metadata": {"n_utterances": 6, "n_speakers": 3, "engine_version": "0.2.0",
+               "timeline": {"fixed_window_seconds": 300, "sliding_window_seconds": 300,
+                            "sliding_step_seconds": 30, "n_fixed_windows": 1, "n_sliding_windows": 10}},
+  "warnings": ["只有一名学生发言：overall_responsivity 和 social_impact 恒为 0"],
   "error": null
 }
 ```
@@ -213,8 +222,13 @@ result = analyze_group("meeting-001")   # meeting_id 是字符串
 - 学生六指标**只叫这 6 个名字**：`participation`、`internal_cohesion`、
   `overall_responsivity`、`social_impact`、`newness`、`communication_density`
 - `group_metrics` 只有 `mean / min / max / std / count`，**没有**"团队综合分"
-- `timeline` 第一版为 `null`（未实现，warnings 里已标明；由雷梦琪在
-  `windows.py` 实现固定 5 分钟窗口和滑动 5 分钟窗口，滑动窗口首版按 30 秒一个更新点）
+- `timeline` 已实现（雷梦琪，`gca_engine/windows.py`）：
+  - `fixed_5min`：左闭右开 `[start_second, end_second)`，固定 5 分钟一段；
+  - `sliding_5min`：`center_second` 是更新时刻，窗口取"最近 5 分钟"，
+    首版每 30 秒一个更新点，课堂末尾不在 30 秒整数倍上时补一个点；
+  - 没有发言的窗口 `group_metrics` 是 `{}`（不是 None，也不会报错）；
+  - 窗口与整体共用同一套 LSA 语义空间（整节课只拟合一次），窗口之间可比；
+  - 只要个人/小组指标时可传 `EngineConfig(timeline_enabled=False)` 关掉。
 
 ## 状态只有这 7 种
 

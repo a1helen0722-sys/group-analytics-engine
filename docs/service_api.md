@@ -48,7 +48,7 @@ analyze_group 的返回状态仍限定为约定的 7 种。
 | status | 分析状态 |
 | student_metrics | 按学生 ID 保存的个人六指标 |
 | group_metrics | 各指标的 mean、min、max、std、count |
-| timeline | 时间趋势；当前基础版为 None |
+| timeline | 时间趋势：固定 5 分钟窗口 + 滑动 5 分钟窗口；关闭窗口计算或分析失败时为 None |
 | metadata | 发言数量、人数、版本等附加信息 |
 | warnings | 降维、未实现能力等提示 |
 | error | 错误或无法分析的原因；正常完成时为 None |
@@ -82,7 +82,40 @@ analyze_group 的返回状态仍限定为约定的 7 种。
 ## 6. 当前限制与待确认事项
 
 - 当前使用内存数据源，真实课堂数据接入尚待联调。
-- 时间窗口尚未接入，timeline 为 None；完成指标计算时，warnings 会包含未实现提示。
+- 时间窗口已接入（固定 5 分钟 + 滑动 5 分钟，滑动每 30 秒一个更新点）；
+  课堂时长不足一个滑动更新点时 `sliding_5min` 为空，warnings 会说明。
 - 中文处理尚未正式接入，现有 quickstart 使用英文示例数据。
 - 待与 Agent 组确认首轮调用方式及返回字段是否满足需求。
 - 待与数据转换负责人确认真实数据来源和课堂时间起点。
+
+## 7. timeline 结构（Agent 组对接用）
+
+`timeline` 是字典，两个键：
+
+```json
+{
+  "fixed_5min": [
+    {"start_second": 0, "end_second": 300, "group_metrics": {"participation": {"mean": 0.4, "min": 0.2, "max": 0.6, "std": 0.1, "count": 3}}}
+  ],
+  "sliding_5min": [
+    {"center_second": 30, "group_metrics": {"participation": {"mean": 0.5, "min": 0.5, "max": 0.5, "std": 0.0, "count": 1}}}
+  ]
+}
+```
+
+读法：
+
+- `fixed_5min`：左闭右开 `[start_second, end_second)`，每段单独重算 GCA，
+  用来回答"这节课第几个五分钟里小组状态如何"。
+- `sliding_5min`：`center_second` 是**更新时刻**（第几秒做的这次统计），
+  窗口取 `(center_second - 300, center_second]`，即"最近 5 分钟"；
+  首版每 30 秒一个点，课堂结束时间不在 30 秒整数倍上时末尾补一个点。
+- 某个窗口没有发言时，`group_metrics` 是空字典 `{}`，不是 None 也不会报错。
+  判断"这个窗口里有没有人"看 `group_metrics["participation"]["count"]`。
+- 窗口指标和整体指标用的是同一套 LSA 语义空间（整节课只拟合一次），
+  所以各窗口之间可以比较。
+- 窗口的粒度记录在 `metadata.timeline`：
+  `fixed_window_seconds` / `sliding_window_seconds` / `sliding_step_seconds` /
+  `n_fixed_windows` / `n_sliding_windows`。
+- 只想拿个人和小组指标、不需要时间趋势时，可传
+  `EngineConfig(timeline_enabled=False)` 关闭窗口计算。

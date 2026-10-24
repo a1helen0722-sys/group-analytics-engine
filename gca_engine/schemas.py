@@ -91,7 +91,10 @@ class GroupAnalysisResult:
                 {"center_second": 60, "group_metrics": {...}},
             ],
         }
-    第一版尚未实现，timeline 为 None，并在 warnings 里明确标记。
+    v0.2 已实现（雷梦琪，gca_engine/windows.py）：固定 5 分钟窗口每段
+    左闭右开，滑动窗口每 30 秒一个更新点；没有发言的窗口 group_metrics
+    为空字典。只用个人/小组指标时可用 EngineConfig(timeline_enabled=False)
+    关掉，此时 timeline 为 None。
     """
 
     meeting_id: str

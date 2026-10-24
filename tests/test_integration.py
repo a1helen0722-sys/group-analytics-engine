@@ -74,8 +74,16 @@ class TestEndToEndChain(unittest.TestCase):
             for v in m.values():
                 self.assertFalse(np.isnan(v))
         self.assertEqual(result.group_metrics["participation"]["count"], 3)
-        self.assertIsNone(result.timeline)
-        self.assertTrue(any("timeline 尚未实现" in w for w in result.warnings))
+        # 10.28 起 timeline 已实现：470 秒的课堂 = 2 个固定 5 分钟窗口
+        self.assertIsNotNone(result.timeline)
+        self.assertEqual(len(result.timeline["fixed_5min"]), 2)
+        self.assertEqual(
+            result.timeline["fixed_5min"][0]["start_second"], 0
+        )
+        self.assertEqual(
+            result.timeline["fixed_5min"][1]["start_second"], 300
+        )
+        self.assertTrue(result.timeline["sliding_5min"])
         self.assertEqual(result.metadata["n_utterances"], 6)
         self.assertEqual(result.metadata["n_speakers"], 3)
         # 相对秒数：最早 30 -> 0，最晚 500 -> 470
@@ -198,23 +206,48 @@ class TestTinyCorpusWarning(unittest.TestCase):
 
 
 class TestWindowsContract(unittest.TestCase):
-    """10.22 契约锁定：窗口未实现，必须明确报错/明示。
-    10.28 由雷梦琪实现 windows.py 后改写本测试。"""
+    """窗口契约（10.28 雷梦琪实现 windows.py 后改写）。
 
-    def test_window_builders_raise_not_implemented(self):
-        with self.assertRaises(NotImplementedError):
-            build_fixed_windows([])
-        with self.assertRaises(NotImplementedError):
-            build_sliding_windows([])
+    原来锁的是"未实现必须显式报错"；现在锁"必须真的产出 timeline"，
+    并且空课堂/短课堂不能因为窗口计算而崩。
+    """
 
-    def test_engine_timeline_none_with_warning(self):
+    def test_window_builders_return_lists(self):
+        def analyzer(subset):
+            from gca_engine.schemas import SIX_METRICS
+
+            return {u.speaker_id: {m: 0.5 for m in SIX_METRICS} for u in subset}
+
+        us = [
+            Utterance("w-1", "a", "hello world", 10.0, "u1"),
+            Utterance("w-1", "b", "goodbye world", 700.0, "u2"),
+        ]
+        fixed = build_fixed_windows(us, analyzer=analyzer)
+        sliding = build_sliding_windows(us, analyzer=analyzer)
+        self.assertEqual(len(fixed), 3)          # 0-300 / 300-600 / 600-900
+        self.assertTrue(sliding)
+        self.assertEqual(sliding[0]["center_second"], 30)
+        # 中间那个窗口没人发言，group_metrics 必须是空字典而不是 None
+        self.assertEqual(fixed[1]["group_metrics"], {})
+
+    def test_engine_timeline_present(self):
         us = [
             Utterance("w-1", "a", "hello world", 10.0, "u1"),
             Utterance("w-1", "b", "goodbye world", 20.0, "u2"),
         ]
         r = analyze_utterances("w-1", us)
-        self.assertIsNone(r.timeline)
-        self.assertTrue(any("timeline 尚未实现" in w for w in r.warnings))
+        self.assertIsNotNone(r.timeline)
+        self.assertEqual(len(r.timeline["fixed_5min"]), 1)
+        self.assertFalse(any("timeline 尚未实现" in w for w in r.warnings))
+
+    def test_empty_utterances_windows_no_crash(self):
+        def analyzer(subset):  # 空子集不会被调用
+            raise AssertionError("空子集不应调用 analyzer")
+
+        self.assertEqual(
+            build_fixed_windows([], analyzer=analyzer)[0]["group_metrics"], {}
+        )
+        self.assertEqual(build_sliding_windows([], analyzer=analyzer), [])
 
 
 if __name__ == "__main__":

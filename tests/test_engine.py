@@ -64,7 +64,7 @@ class TestEngineDirect(unittest.TestCase):
         self.assertEqual(md["empty_text_count"], 0)
         self.assertEqual(md["lsa"]["requested_dimensions"], 300)
         self.assertLessEqual(md["lsa"]["actual_dimensions"], 2)
-        self.assertEqual(md["engine_version"], "0.1.0")
+        self.assertEqual(md["engine_version"], "0.2.0")
 
     def test_partial_empty_text_warning(self):
         us = [
