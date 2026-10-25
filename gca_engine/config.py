@@ -31,6 +31,11 @@ class EngineConfig:
     # 是否计算 timeline。窗口计算比整节课多花 O(窗口数 × 发言数)，
     # 只需要个人/小组指标、不要时间趋势的调用方可以关掉。
     timeline_enabled: bool = True
+    # 分词方案：
+    #   "chinese" —— 旧清洗（小写 + 去标点）后交给 preprocessing/chinese.py
+    #                的 tokenize（装了 jieba 就真分词，没装自动退回按空白切）
+    #   "legacy"  —— 旧基线：core/lsa 的空白分词，用于复现历史结果、对比基线
+    tokenizer: str = "chinese"
 
     def to_dict(self) -> dict:
         return asdict(self)

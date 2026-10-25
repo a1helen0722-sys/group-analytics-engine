@@ -23,7 +23,9 @@ from datetime import datetime, timezone
 from gca_engine.aggregation import group_metric_stats
 from gca_engine.config import EngineConfig
 from gca_engine.core.config import GCAConfig
-from gca_engine.core.lsa import clean_text, tokenize
+from gca_engine.core.lsa import clean_text
+from gca_engine.core.lsa import tokenize as legacy_tokenize
+from gca_engine.preprocessing.chinese import tokenize as chinese_tokenize
 from gca_engine.core.lsa.config import LSAConfig
 from gca_engine.core.metrics import compute_gca_metrics
 from gca_engine.schemas import (
@@ -123,8 +125,26 @@ def analyze_utterances(
     texts = [u.text or "" for u in ordered]
     speaker_ids = [u.speaker_id for u in ordered]
 
-    cleaned = [clean_text(t) for t in texts]
-    n_empty = sum(1 for c in cleaned if not c)
+    if config.tokenizer not in ("chinese", "legacy"):
+        return _error_result(
+            meeting_id,
+            AnalysisStatus.INVALID_INPUT,
+            f"未知的 tokenizer 配置：{config.tokenizer!r}（只支持 chinese / legacy）",
+        )
+
+    # --- 分词：LSA 和词数必须用同一套 token -------------------------------
+    # chinese: 先走旧清洗（小写 + 去标点），再交给中文分词。LSA 吃的是
+    #          "词之间用空格连起来"的文本，这样 TF-IDF 的 token_pattern=\S+
+    #          统计的才是词，而不是整句。
+    # legacy : 旧基线路径，LSA 直接吃原文，用于复现历史结果。
+    if config.tokenizer == "legacy":
+        tokens = [legacy_tokenize(t) for t in texts]
+        lsa_texts = texts
+    else:
+        tokens = [chinese_tokenize(clean_text(t)) for t in texts]
+        lsa_texts = [" ".join(ts) for ts in tokens]
+
+    n_empty = sum(1 for ts in tokens if not ts)
     if n_empty == n:
         return _error_result(
             meeting_id,
@@ -139,9 +159,9 @@ def analyze_utterances(
     # --- LSA 语义空间 ----------------------------------------------------
     try:
         model = fit_lsa_space(
-            texts, config=LSAConfig(n_components=config.lsa_components)
+            lsa_texts, config=LSAConfig(n_components=config.lsa_components)
         )
-        vectors = project_texts(model, texts)
+        vectors = project_texts(model, lsa_texts)
     except ValueError as e:
         return _error_result(
             meeting_id, AnalysisStatus.INSUFFICIENT_DATA,
@@ -155,7 +175,7 @@ def analyze_utterances(
 
     # --- GCA 六指标（数学与旧基线一致） ----------------------------------
     gca_config = GCAConfig()
-    word_counts = [len(tokenize(t)) for t in texts]
+    word_counts = [len(ts) for ts in tokens]
     gca = compute_gca_metrics(meeting_id, speaker_ids, vectors, word_counts, gca_config)
 
     student_metrics = _student_metrics_from(gca)
@@ -224,6 +244,11 @@ def analyze_utterances(
         "lsa": {
             "requested_dimensions": model.requested_dimensions,
             "actual_dimensions": model.actual_dimensions,
+        },
+        "tokenization": {
+            "scheme": config.tokenizer,
+            "total_tokens": int(sum(len(ts) for ts in tokens)),
+            "tokens_per_utterance": float(sum(len(ts) for ts in tokens) / n),
         },
         "gca_config": gca_config.to_dict(),
         "timeline": metadata_timeline,

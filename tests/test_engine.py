@@ -99,15 +99,30 @@ class TestEngineDirect(unittest.TestCase):
         self.assertAlmostEqual(m["social_impact"], 0.0)
         self.assertTrue(any("只有一名学生" in w for w in r.warnings))
 
-    def test_identical_chinese_utterances_insufficient_data(self):
-        """回归锁定：相同中文发言 -> 空白分词下只有 1 个特征 ->
-        TruncatedSVD 拒绝 -> 引擎优雅降级为 insufficient_data，不得崩溃。
-        （10.26 接入中文分词 / ASR 去重后此行为可再调整。）"""
+    def test_identical_chinese_utterances_with_chinese_tokenizer(self):
+        """接入中文分词后的行为：'好的' 被切成 ['好', '的']，
+        两个特征已经够 TruncatedSVD 拟合，所以不再降级为 insufficient_data。
+
+        （原来这条锁的是"空白分词下只有 1 个特征 -> 降级"，
+        按 10.26 计划接入中文分词后行为变化，故拆成两条：
+        本函数锁新行为，下面一条锁旧基线行为，避免基线悄悄漂移。）"""
         us = [
             _u("m1", "s1", "好的", 10.0, "u1"),
             _u("m1", "s2", "好的", 20.0, "u2"),
         ]
         r = analyze_utterances("m1", us)
+        self.assertEqual(r.status, AnalysisStatus.SUCCESS)
+        self.assertEqual(r.metadata["tokenization"]["scheme"], "chinese")
+        self.assertTrue(_no_nan(r))
+
+    def test_identical_chinese_utterances_legacy_still_insufficient(self):
+        """旧基线路径可复现：tokenizer='legacy' 时空白分词只有 1 个特征，
+        TruncatedSVD 拒绝 -> 引擎仍优雅降级为 insufficient_data。"""
+        us = [
+            _u("m1", "s1", "好的", 10.0, "u1"),
+            _u("m1", "s2", "好的", 20.0, "u2"),
+        ]
+        r = analyze_utterances("m1", us, config=EngineConfig(tokenizer="legacy"))
         self.assertEqual(r.status, AnalysisStatus.INSUFFICIENT_DATA)
         self.assertIn("LSA", r.error)
         self.assertTrue(_no_nan(r))
@@ -138,6 +153,50 @@ class TestEngineDirect(unittest.TestCase):
         self.assertEqual(r.status, AnalysisStatus.EMPTY_TRANSCRIPT)
         r2 = analyze_utterances("m1", ["not an utterance"])
         self.assertEqual(r2.status, AnalysisStatus.INVALID_INPUT)
+
+
+class TestTokenizerSwitch(unittest.TestCase):
+    """中文分词接入后的开关行为（雷梦琪，10.25）。"""
+
+    def _zh(self):
+        return [
+            _u("zh", "101", "我觉得这个方案可行", 30.0, "u1"),
+            _u("zh", "102", "我同意但是时间不够", 120.0, "u2"),
+            _u("zh", "103", "我们可以把工作拆开", 290.0, "u3"),
+            _u("zh", "101", "先做核心部分", 400.0, "u4"),
+        ]
+
+    def test_chinese_mode_splits_more_than_legacy(self):
+        chinese = analyze_utterances("zh", self._zh())
+        legacy = analyze_utterances(
+            "zh", self._zh(), config=EngineConfig(tokenizer="legacy")
+        )
+        n_zh = chinese.metadata["tokenization"]["total_tokens"]
+        n_legacy = legacy.metadata["tokenization"]["total_tokens"]
+        # 4 条中文：旧分词每句最多 1-2 个 token；jieba 应该明显更多
+        self.assertGreater(n_zh, n_legacy)
+        self.assertLessEqual(n_legacy, 8)
+        self.assertGreater(n_zh, 8)
+
+    def test_scheme_recorded_in_metadata(self):
+        r = analyze_utterances("zh", self._zh())
+        self.assertEqual(r.metadata["tokenization"]["scheme"], "chinese")
+        r2 = analyze_utterances("zh", self._zh(), config=EngineConfig(tokenizer="legacy"))
+        self.assertEqual(r2.metadata["tokenization"]["scheme"], "legacy")
+
+    def test_participation_unaffected_by_tokenizer(self):
+        # 分词只影响语义和词数，不该影响"谁说了多少次"
+        a = analyze_utterances("zh", self._zh()).student_metrics
+        b = analyze_utterances(
+            "zh", self._zh(), config=EngineConfig(tokenizer="legacy")
+        ).student_metrics
+        for spk in a:
+            self.assertAlmostEqual(a[spk]["participation"], b[spk]["participation"])
+
+    def test_unknown_tokenizer_rejected(self):
+        r = analyze_utterances("zh", self._zh(), config=EngineConfig(tokenizer="jieba2"))
+        self.assertEqual(r.status, AnalysisStatus.INVALID_INPUT)
+        self.assertIn("tokenizer", r.error)
 
 
 if __name__ == "__main__":
