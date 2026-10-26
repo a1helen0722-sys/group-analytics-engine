@@ -12,6 +12,7 @@ analyze_group 的签名和返回格式保持不变。
 """
 
 import logging
+from dataclasses import replace
 
 from gca_engine.engine import analyze_utterances
 from gca_engine.schemas import AnalysisStatus, GroupAnalysisResult, Utterance
@@ -37,7 +38,10 @@ def register_meeting(meeting_id: str, utterances: list[Utterance]) -> None:
     if any(u.meeting_id != meeting_id for u in utterances):
         raise ValueError("每条发言的 meeting_id 必须与注册的 meeting_id 一致")
 
-    _MEETING_STORE[meeting_id] = list(utterances)
+    # Utterance 可变：重新构造既复核当前字段，也隔离调用方后续的原地修改。
+    # 全部记录通过校验后才替换登记，失败时保留原有数据。
+    snapshot = [replace(u) for u in utterances]
+    _MEETING_STORE[meeting_id] = snapshot
 
 
 def clear_meeting(meeting_id: str) -> None:
@@ -88,7 +92,9 @@ def analyze_group(meeting_id: str) -> GroupAnalysisResult:
         )
 
     try:
-        return analyze_utterances(meeting_id, utterances)
+        # 每次计算使用独立副本，防止引擎意外修改登记数据影响下一次分析。
+        snapshot = [replace(u) for u in utterances]
+        return analyze_utterances(meeting_id, snapshot)
     except Exception as e:  # 任何未预期错误都转成 internal_error，不让调用方崩溃
         logger.exception("analyze_group(%s) failed", meeting_id)
         return GroupAnalysisResult(
