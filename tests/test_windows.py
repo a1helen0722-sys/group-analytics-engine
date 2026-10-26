@@ -93,6 +93,16 @@ class TestFixedWindows(unittest.TestCase):
         self.assertEqual(len(windows), 3)   # 0-300 / 300-600 / 600-900
         self.assertEqual(windows[2]["group_metrics"]["participation"]["count"], 1)
 
+    def test_end_time_beyond_last_speech_does_not_create_empty_tail(self):
+        """end_time 把课堂撑长、但那段时间没人说话时，不该凭空多一个空窗口。"""
+        us = [
+            Utterance("m", "a", "hi", 0.0, "u1", end_time=600.0),
+            Utterance("m", "b", "yo", 10.0, "u2"),
+        ]
+        windows = build_fixed_windows(us, analyzer=_fake_analyzer)
+        self.assertEqual(len(windows), 1)   # 最后一条发言在第 10 秒，只需 [0,300)
+        self.assertEqual(duration_seconds(us), 600.0)   # 时长本身仍是 600
+
     def test_splits_by_five_minutes(self):
         us = [_u("a", 10), _u("b", 290), _u("c", 310), _u("a", 470)]
         windows = build_fixed_windows(us, analyzer=_fake_analyzer)

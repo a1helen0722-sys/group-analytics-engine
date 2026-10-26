@@ -132,29 +132,31 @@ def build_fixed_windows(
         window_seconds:  窗口长度（默认 5 分钟）。
         analyzer:        子集指标计算回调；None 时全部窗口为空。
         errors:          可选，失败窗口的错误信息会 append 进来。
-        duration:        课堂时长；None 时自动从 utterances 推算。
+        duration:        课堂时长。仅用于兼容调用方，**不再决定窗口数**：
+                         窗口按"发言实际落在哪"切，见下面边界约定。
 
     Returns:
         [{"start_second", "end_second", "group_metrics"}, ...]
 
     边界约定：
         - 一个发言正好落在窗口边界上时，归入后一个窗口（左闭右开）。
-        - 课堂时长为 0（只有一条 t=0 的发言）时也会有一个 [0,300) 窗口。
-        - 时长不是窗口整数倍时，最后一个窗口是完整的 300 秒，
-          不会截断成半截（Agent 侧看到的窗口长度始终一致）。
+        - 窗口数 = ⌊最后一条发言时间 / 窗口⌋ + 1。用"最后一条发言"
+          而不是"课堂时长"，是因为时长可能被 end_time 撑长
+          （例如只有一条 0 秒发言、end_time=600），那段根本没人说话，
+          不该凭空造出一个空窗口。
+        - 课堂没有任何发言时返回一个 [0,300) 窗口（group_metrics 为空）。
+        - 窗口长度始终是完整的 300 秒，不会截断成半截。
     """
     window_seconds = int(window_seconds)
     if window_seconds <= 0:
         raise ValueError("window_seconds 必须是正整数")
     errors = errors if errors is not None else []
 
-    if duration is None:
-        duration = duration_seconds(utterances)
-
-    # 窗口数 = ⌊时长 / 窗口⌋ + 1，保证"课堂最后一刻所在的那个窗口"一定存在。
-    # 不能用 ceil：时长正好 300 秒时 ceil 只切出 [0,300)，而窗口是左闭右开，
-    # 落在 300 秒的那条发言会被右边界挡在外面，直接漏掉。
-    n_windows = max(1, int(duration // window_seconds) + 1)
+    # 窗口数按"最后一条发言落在哪个窗口"来定，保证边界发言
+    # （比如第 300 秒那条）一定有自己的窗口接住，又不会因为
+    # end_time 把时长撑长而多出没有发言的尾窗。
+    last_ts = max((_timestamp(u) for u in utterances), default=0.0)
+    n_windows = max(1, int(last_ts // window_seconds) + 1)
 
     windows = []
     for i in range(n_windows):
