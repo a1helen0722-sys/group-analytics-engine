@@ -5,6 +5,7 @@
 GroupAnalysisResult 序列化。
 """
 
+import json
 import unittest
 
 from gca_engine.schemas import (
@@ -59,6 +60,30 @@ class TestUtterance(unittest.TestCase):
             Utterance("m1", "u001", "大家好", 1.0, "t1", end_time=-1.0)
 
 
+    def test_timestamp_rejects_nonfinite_and_boolean(self):
+        for value in (float("nan"), float("inf"), float("-inf"), True, False):
+            with self.subTest(timestamp=value):
+                with self.assertRaisesRegex(ValueError, "timestamp"):
+                    Utterance("m1", "u001", "大家好", value, "t1")
+
+    def test_end_time_rejects_nonfinite_and_boolean(self):
+        for value in (float("nan"), float("inf"), float("-inf"), True, False):
+            with self.subTest(end_time=value):
+                with self.assertRaisesRegex(ValueError, "end_time"):
+                    Utterance("m1", "u001", "大家好", 1.0, "t1", end_time=value)
+
+    def test_nonnegative_time_values_are_allowed(self):
+        for value in (0, 0.0, 12, 12.5):
+            with self.subTest(time=value):
+                u = Utterance("m1", "u001", "大家好", value, "t1", end_time=value)
+                self.assertEqual(u.timestamp, value)
+                self.assertEqual(u.end_time, value)
+
+    def test_end_time_cannot_precede_timestamp(self):
+        with self.assertRaisesRegex(ValueError, "end_time"):
+            Utterance("m1", "u001", "大家好", 300.0, "t1", end_time=100.0)
+
+
 class TestStatuses(unittest.TestCase):
     """状态只允许这 7 种，全项目统一。"""
 
@@ -105,15 +130,30 @@ class TestGroupAnalysisResult(unittest.TestCase):
                                              "max": 0.5, "std": 0.0, "count": 1}},
             timeline=None,
             metadata={"n_utterances": 2},
-            warnings=["timeline 尚未实现"],
+            warnings=[],
             error=None,
         )
         d = result.to_dict()
         self.assertEqual(d["meeting_id"], "m1")
         self.assertEqual(d["status"], "success")
         self.assertEqual(d["timeline"], None)
-        self.assertEqual(d["warnings"], ["timeline 尚未实现"])
+        self.assertEqual(d["warnings"], [])
         self.assertEqual(d["error"], None)
+
+    def test_fixed_only_timeline_serializes_with_empty_window(self):
+        timeline = {
+            "fixed_5min": [
+                {"start_second": 0, "end_second": 300, "group_metrics": {}},
+            ],
+        }
+        result = GroupAnalysisResult(
+            meeting_id="m1", status=AnalysisStatus.SUCCESS,
+            student_metrics={}, group_metrics={}, timeline=timeline,
+        )
+        data = json.loads(json.dumps(result.to_dict(), allow_nan=False))
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["timeline"], timeline)
+        self.assertNotIn("sliding_5min", data["timeline"])
 
 
 if __name__ == "__main__":

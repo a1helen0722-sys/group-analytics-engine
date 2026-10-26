@@ -8,7 +8,7 @@ service 层端到端测试（负责人：葛艾蓝）。
 import unittest
 from unittest.mock import patch
 
-from gca_engine.schemas import AnalysisStatus, Utterance
+from gca_engine.schemas import AnalysisStatus, GroupAnalysisResult, Utterance
 from gca_engine.service import (
     analyze_group,
     clear_meeting,
@@ -84,12 +84,6 @@ class TestAnalyzeGroup(unittest.TestCase):
                 set(stats), {"mean", "min", "max", "std", "count"}
             )
             self.assertEqual(stats["count"], 3)
-
-        # timeline 第一版未实现：None + 明确标记
-        self.assertIsNone(result.timeline)
-        self.assertTrue(
-            any("timeline 尚未实现" in w for w in result.warnings)
-        )
 
         # 结果可以序列化成 dict
         d = result.to_dict()
@@ -181,6 +175,86 @@ class TestAnalyzeGroup(unittest.TestCase):
             set(result.student_metrics),
             {u.speaker_id for u in original},
         )
+
+
+    def test_registration_isolated_from_caller_mutations(self):
+        meeting_id = "snapshot-group"
+        original = _make_utterances(meeting_id)
+        register_meeting(meeting_id, original)
+
+        original[0].meeting_id = "other-group"
+        original[0].speaker_id = "foreign-student"
+        original[0].timestamp = float("nan")
+        original.clear()
+
+        result = analyze_group(meeting_id)
+        self.assertEqual(result.status, AnalysisStatus.SUCCESS)
+        self.assertEqual(result.metadata["n_utterances"], 6)
+        self.assertEqual(set(result.student_metrics), {"u001", "u002", "u003"})
+
+    def test_invalid_mutated_record_does_not_overwrite_registration(self):
+        meeting_id = "snapshot-group"
+        register_meeting(meeting_id, _make_utterances(meeting_id))
+        invalid = _make_utterances(meeting_id)
+        invalid[0].timestamp = float("nan")
+
+        with self.assertRaisesRegex(ValueError, "timestamp"):
+            register_meeting(meeting_id, invalid)
+
+        self.assertEqual(analyze_group(meeting_id).status, AnalysisStatus.SUCCESS)
+
+    def test_engine_mutation_does_not_damage_registration(self):
+        meeting_id = "snapshot-group"
+        register_meeting(meeting_id, _make_utterances(meeting_id))
+
+        def broken_engine(mid, utterances):
+            utterances[0].speaker_id = "foreign-student"
+            utterances.clear()
+            raise RuntimeError("engine modified its input")
+
+        with patch("gca_engine.service.analyze_utterances", side_effect=broken_engine):
+            self.assertEqual(analyze_group(meeting_id).status, AnalysisStatus.INTERNAL_ERROR)
+
+        result = analyze_group(meeting_id)
+        self.assertEqual(result.status, AnalysisStatus.SUCCESS)
+        self.assertEqual(result.metadata["n_utterances"], 6)
+        self.assertNotIn("foreign-student", result.student_metrics)
+
+    def test_fixed_only_timeline_and_window_errors_are_preserved(self):
+        meeting_id = "fixed-group"
+        register_meeting(meeting_id, _make_utterances(meeting_id))
+        expected = GroupAnalysisResult(
+            meeting_id=meeting_id,
+            status=AnalysisStatus.SUCCESS,
+            student_metrics={},
+            group_metrics={},
+            timeline={"fixed_5min": [
+                {"start_second": 0, "end_second": 300, "group_metrics": {}},
+            ]},
+            metadata={
+                "timeline": {"fixed_window_seconds": 300, "n_fixed_windows": 1},
+                "window_errors": [{
+                    "kind": "fixed", "start_second": 0, "end_second": 300,
+                    "error": "RuntimeError: simulated window failure",
+                }],
+            },
+            warnings=["有 1 个时间窗口计算失败"],
+        )
+        with patch("gca_engine.service.analyze_utterances", return_value=expected):
+            actual = analyze_group(meeting_id)
+
+        self.assertEqual(actual.to_dict(), expected.to_dict())
+        self.assertNotIn("sliding_5min", actual.timeline)
+
+    def test_unavailable_timeline_is_preserved(self):
+        meeting_id = "no-timeline-group"
+        register_meeting(meeting_id, _make_utterances(meeting_id))
+        expected = GroupAnalysisResult(
+            meeting_id=meeting_id, status=AnalysisStatus.SUCCESS,
+            student_metrics={}, group_metrics={}, timeline=None,
+        )
+        with patch("gca_engine.service.analyze_utterances", return_value=expected):
+            self.assertIsNone(analyze_group(meeting_id).timeline)
 
 
 if __name__ == "__main__":
