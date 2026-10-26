@@ -13,7 +13,7 @@
 
 - 每个学生 6 个指标：参与度、内部凝聚力、响应度、社会影响力、新信息、沟通密度
 - 每个小组的汇总统计
-- （以后）按 5 分钟时间窗口看讨论过程变化
+- 按 5 分钟时间窗口（固定 / 滑动）看讨论过程变化
 
 分析结果交给 Agent 组和课堂系统使用。
 
@@ -43,10 +43,10 @@ analyze_group(meeting_id) → 统一 JSON 结果 → Agent 组 / 课堂系统
 | `gca_engine/semantic.py` | 陈虹宇 | LSA 语义空间入口 |
 | `gca_engine/adapters/conversation_json.py` | 陈虹宇 | 旧 AMI 语料 → 统一 Utterance |
 | `gca_engine/adapters/classroom.py` | 岳柔 | 课堂数据 → 统一 Utterance |
-| `gca_engine/preprocessing/` | 岳柔 | 中文文本处理（分词、口语词、ASR 重复） |
+| `gca_engine/preprocessing/` | 岳柔 | 中文文本处理（基础清洗、分词、口语词过滤） |
 | `gca_engine/engine.py` | 雷梦琪 | 把各模块接起来的总流程 |
 | `gca_engine/aggregation.py` | 雷梦琪 | 学生结果 → 小组结果 |
-| `gca_engine/windows.py` | 雷梦琪 | 固定 5 分钟 / 滑动 5 分钟窗口（开发中） |
+| `gca_engine/windows.py` | 雷梦琪 | 固定 5 分钟 / 滑动 5 分钟窗口 |
 | `gca_engine/config.py` | 雷梦琪 | 引擎级配置 |
 | `gca_engine/schemas.py` | 葛艾蓝 | 统一输入输出格式（全员必须遵守） |
 | `gca_engine/service.py` | 葛艾蓝 | `analyze_group(meeting_id)` 对外入口 |
@@ -242,6 +242,8 @@ result = analyze_group("meeting-001")   # meeting_id 是字符串
 1. **Newness 边界问题待复核（陈虹宇）**：当前数学与旧实验基线完全一致
    （legacy 行为已用 `tests/test_newness_edge_cases.py` 锁死）。复核后如果
    确认有 bug：先在群里说明 → 更新测试 → 再改代码，并在提交信息里写清影响。
-2. **timeline 未实现（雷梦琪）**：见 `gca_engine/windows.py`。
-3. **中文分词未接入（岳柔）**：目前按空白切分，中文效果差；
-   接入 `preprocessing/chinese.py` 并验证后再切换引擎。
+2. **timeline 已实现（v0.2，雷梦琪）**：固定 5 分钟 + 滑动 5 分钟窗口
+   已接入引擎，结构见上文"统一输出格式"与 `docs/service_api.md`。
+3. **中文分词已接入（v0.2）**：引擎默认 `tokenizer="chinese"`（jieba，
+   依赖已进 requirements.txt）；`EngineConfig(tokenizer="legacy")` 可复现
+   旧基线。仍待实现：ASR 重复片段清理、更完整的口语词过滤表。

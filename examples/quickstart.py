@@ -4,8 +4,9 @@
 运行：
     python examples/quickstart.py
 
-注意：中文分词还没正式接入（preprocessing/chinese.py 开发中），
-这里先用英文短句当假数据，重点是看整条流程和结果格式。
+注意：引擎默认使用中文分词（EngineConfig.tokenizer="chinese"，jieba），
+中文发言和英文发言走同一个入口。这里用英文短句当假数据，
+重点是看整条流程和结果格式（含 timeline 时间窗口）。
 """
 
 import json
