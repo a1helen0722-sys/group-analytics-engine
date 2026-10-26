@@ -53,8 +53,45 @@ class TestDuration(unittest.TestCase):
     def test_duration_empty(self):
         self.assertEqual(duration_seconds([]), 0.0)
 
+    def test_end_time_shorter_than_timestamp_does_not_shrink_duration(self):
+        """脏数据回归：timestamp=300、end_time=100 不能被算成 100 秒。
+
+        真实数据里 end_time 有可能缺失或错乱，它只应该"延长"发言，
+        绝不能把课堂时长算短——否则整节课的窗口会被裁掉。
+        """
+        us = [Utterance("m", "a", "hi", 300.0, "u1", end_time=100.0)]
+        self.assertEqual(duration_seconds(us), 300.0)
+
+    def test_duration_takes_max_of_timestamp_and_end_time(self):
+        us = [
+            Utterance("m", "a", "hi", 10.0, "u1", end_time=120.0),
+            Utterance("m", "b", "yo", 500.0, "u2", end_time=400.0),
+            Utterance("m", "c", "ok", 300.0, "u3", end_time=None),
+        ]
+        # max(10,120)=120, max(500,400)=500, max(300)=300 -> 500
+        self.assertEqual(duration_seconds(us), 500.0)
+
 
 class TestFixedWindows(unittest.TestCase):
+
+    def test_utterance_at_exact_multiple_gets_its_own_window(self):
+        """30 秒 + 300 秒：300 秒那条不能被丢掉。
+
+        窗口是左闭右开，300 只能落在 [300,600)。如果窗口数按 ceil(300/300)=1
+        算，就只剩 [0,300)，这条发言直接被右边界挡掉。
+        """
+        us = [_u("a", 30), _u("b", 300)]
+        windows = build_fixed_windows(us, analyzer=_fake_analyzer)
+        self.assertEqual([(w["start_second"], w["end_second"]) for w in windows],
+                         [(0, 300), (300, 600)])
+        self.assertEqual(windows[0]["group_metrics"]["participation"]["count"], 1)
+        self.assertEqual(windows[1]["group_metrics"]["participation"]["count"], 1)
+
+    def test_duration_exact_multiple_of_window_keeps_trailing_window(self):
+        us = [_u("a", 0), _u("b", 600)]
+        windows = build_fixed_windows(us, analyzer=_fake_analyzer)
+        self.assertEqual(len(windows), 3)   # 0-300 / 300-600 / 600-900
+        self.assertEqual(windows[2]["group_metrics"]["participation"]["count"], 1)
 
     def test_splits_by_five_minutes(self):
         us = [_u("a", 10), _u("b", 290), _u("c", 310), _u("a", 470)]

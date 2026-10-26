@@ -32,7 +32,6 @@ gca_engine.windows —— 时间窗口分析（负责人：雷梦琪）。
 """
 
 import logging
-import math
 from typing import Callable
 
 from gca_engine.aggregation import group_metric_stats
@@ -65,8 +64,13 @@ def duration_seconds(utterances) -> float:
         return 0.0
     total = 0.0
     for u in utterances:
+        point = _timestamp(u)
         end = getattr(u, "end_time", None)
-        point = float(end) if end is not None else _timestamp(u)
+        if end is not None:
+            # end_time 只允许"延长"发言，不允许把课堂时长算短：
+            # 真实数据里出现过 timestamp=300、end_time=100 的脏数据，
+            # 直接取 end_time 会把 300 秒的发言判到课堂之外。
+            point = max(point, float(end))
         if point > total:
             total = point
     return float(total)
@@ -147,7 +151,10 @@ def build_fixed_windows(
     if duration is None:
         duration = duration_seconds(utterances)
 
-    n_windows = max(1, int(math.ceil(duration / window_seconds)))
+    # 窗口数 = ⌊时长 / 窗口⌋ + 1，保证"课堂最后一刻所在的那个窗口"一定存在。
+    # 不能用 ceil：时长正好 300 秒时 ceil 只切出 [0,300)，而窗口是左闭右开，
+    # 落在 300 秒的那条发言会被右边界挡在外面，直接漏掉。
+    n_windows = max(1, int(duration // window_seconds) + 1)
 
     windows = []
     for i in range(n_windows):
